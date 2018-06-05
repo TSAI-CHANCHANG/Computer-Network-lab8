@@ -29,9 +29,39 @@ int func(SOCKET ClientSocket)
 	if (iResult > 0) {
 		printf("Bytes received: %d\n", iResult);
 		printf("received content: %s", recvbuf);
+		
+		//first check out whether the packet have double '\n'
+		int pos = 0;
+		while (pos < iResult)//check the whole packet
+		{
+			if (recvbuf[pos] == '\r' && recvbuf[pos+1] == '\n' && pos < iResult - 3 && recvbuf[pos + 2] == '\r' && recvbuf[pos + 3] == '\n')
+				break;
+			pos++;
+		}
+		if (pos == iResult)
+		{
+			printf("the packet is wrong!\n");
+			closesocket(ClientSocket);
+			WSACleanup();
+			return 1;
+		}
+		//then deal with the content: 1.Get the necessary information
+		std::string receivePacket = recvbuf;
+		pos = receivePacket.find(" ");
+		std::string method = receivePacket.substr(0, pos);
+		pos++;
+		std::string URL = receivePacket.substr(pos, receivePacket.find(" ", pos) - pos);
+		
+		if (method.compare("GET") == 0)
+		{
+
+		}
+		else if (method.compare("POST") == 0)
+		{
+
+		}
+		
 		// Echo the buffer back to the sender
-		memset(recvbuf, 0, sizeof(char) * DEFAULT_BUFLEN);
-		recvbuf[0] = 'f';
 		iSendResult = send(ClientSocket, recvbuf, 1, 0);
 		if (iSendResult == SOCKET_ERROR) {
 			printf("send failed with error: %d\n", WSAGetLastError());
