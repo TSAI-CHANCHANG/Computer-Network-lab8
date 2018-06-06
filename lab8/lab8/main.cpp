@@ -134,9 +134,10 @@ int func(SOCKET ClientSocket)
 			pos += 4;
 			std::string body = receivePacket.substr(pos, contentLength);
 			bool isSuccess = true;
-			if (body.find("login=3150105426") == std::string::npos)
+			if (body.find("login=3150105426&") == std::string::npos)
 				isSuccess = false;
-			if(body.find("pass=5426") == std::string::npos)
+			pos = body.find("=5426");
+			if(body.find("pass=5426") == std::string::npos || (pos + 6) <= body.size())
 				isSuccess = false;
 			sendPacket += "HTTP/1.1 ";
 			if (isPOST)
