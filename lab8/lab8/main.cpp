@@ -1,5 +1,5 @@
 #undef UNICODE
-
+#define _CRT_SECURE_NO_WARNINGS
 #define WIN32_LEAN_AND_MEAN
 
 #include <windows.h>
@@ -9,6 +9,8 @@
 #include <stdio.h>
 #include <thread>
 #include <iostream>
+#include <streambuf> 
+#include <fstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -17,7 +19,7 @@
 #pragma comment (lib, "Ws2_32.lib")
 // #pragma comment (lib, "Mswsock.lib")
 
-#define DEFAULT_BUFLEN 512
+#define DEFAULT_BUFLEN 10000
 #define DEFAULT_PORT "5426"
 
 int func(SOCKET ClientSocket)
@@ -50,27 +52,137 @@ int func(SOCKET ClientSocket)
 		pos = receivePacket.find(" ");
 		std::string method = receivePacket.substr(0, pos);
 		pos++;
-		std::string URL = receivePacket.substr(pos, receivePacket.find(" ", pos) - pos);
-		
+		std::string relativePath = receivePacket.substr(pos, receivePacket.find(" ", pos) - pos);
+		std::string absolutePath;
+		if(relativePath.compare("/favicon.ico") == 0)
+			absolutePath = "D:/GitHub/Computer-Network-lab8/lab8/html/favicon.ico";
+		else
+			absolutePath = "D:/GitHub/Computer-Network-lab8/lab8/html/" + relativePath.substr(5);
+		std::string fileType = relativePath.substr(relativePath.find(".") + 1);
+		std::string sendPacket = "";
+		char sendbuf[1000000];
+		ZeroMemory(sendbuf, 1000000);
+
 		if (method.compare("GET") == 0)
 		{
+			std::ifstream fin(absolutePath, std::ifstream::binary);
+			char* content = NULL;
+			int contentLength = 0;
+
+			bool isExist = true;
+			if (!fin)//the file doesn't exist
+				isExist = false;
+			else
+			{
+				fin.seekg(0, fin.end);
+				contentLength = fin.tellg();
+				fin.seekg(0, fin.beg);
+				content = new char[contentLength];
+				fin.read(content, contentLength);
+				if (fin)
+					std::cout << "all characters read successfully.";
+				else
+					std::cout << "error: only " << fin.gcount() << " could be read";
+				fin.close();
+			}
+			
+			sendPacket += "HTTP/1.1 ";
+			if (isExist)
+				sendPacket += "200 OK\r\n";
+			else
+				sendPacket += "404 Not Found\r\n";
+			if (fileType.compare("html") == 0)
+				sendPacket += "Content-Type: text/html\r\n";
+			else if (fileType.compare("jpg") == 0)
+				sendPacket += "Content-Type: application/x-jpg\r\n";
+			else if (fileType.compare("txt") == 0)
+				sendPacket += "Content-Type: text/plain\r\n";
+
+			sendPacket += "Content-Length: ";
+			if(isExist)
+				sendPacket += std::to_string(contentLength);
+			else
+				sendPacket += std::to_string(0);
+			sendPacket += "\r\n\r\n";
+			if (isExist)
+			{
+				strcpy(sendbuf, sendPacket.c_str());
+				memcpy(&sendbuf[sendPacket.size()], content, contentLength);
+				delete[] content;
+			}
+			else
+			{
+				strcpy(sendbuf, sendPacket.c_str());
+				delete[] content;
+			}
 
 		}
 		else if (method.compare("POST") == 0)
 		{
+			bool isPOST = true;
+			pos = receivePacket.find("Content-Length: ") + 16;
+			int contentLength = stoi(receivePacket.substr(pos, receivePacket.find(" ", pos) - pos));
+			if (relativePath.compare("/dir/dopost") != 0)
+				isPOST = false;
+			pos = 0;
+			while (pos < iResult)//check the whole packet
+			{
+				if (recvbuf[pos] == '\r' && recvbuf[pos + 1] == '\n' && pos < iResult - 3 && recvbuf[pos + 2] == '\r' && recvbuf[pos + 3] == '\n')
+					break;
+				pos++;
+			}
+			pos += 4;
+			std::string body = receivePacket.substr(pos, contentLength);
+			bool isSuccess = true;
+			if (body.find("login=3150105426") == std::string::npos)
+				isSuccess = false;
+			if(body.find("pass=5426") == std::string::npos)
+				isSuccess = false;
+			sendPacket += "HTTP/1.1 ";
+			if (isPOST)
+				sendPacket += "200 OK\r\n";
+			else
+				sendPacket += "404 Not Found\r\n";
+			sendPacket += "Content-Type: text/html\r\n";
+			std::string successDispaly = "<html><body>Success!</body></html>";
+			std::string failedDisplay = "<html><body>Not Success!</body></html>";
+			sendPacket += "Content-Length: ";
+			if (isPOST)
+			{
+				if(isSuccess)
+					sendPacket += std::to_string(successDispaly.size());
+				else
+					sendPacket += std::to_string(failedDisplay.size());
+			}
+			else
+				sendPacket += std::to_string(0);
+			sendPacket += "\r\n\r\n";
 
+			if (isPOST)
+			{
+				if (isSuccess)
+					sendPacket += successDispaly;
+				else
+					sendPacket += failedDisplay;
+				strcpy(sendbuf, sendPacket.c_str());
+			}
+			else
+			{
+				strcpy(sendbuf, sendPacket.c_str());
+			}
 		}
 		
 		// Echo the buffer back to the sender
-		iSendResult = send(ClientSocket, recvbuf, 1, 0);
+		iSendResult = send(ClientSocket, sendbuf, 1000000, 0);
 		if (iSendResult == SOCKET_ERROR) {
 			printf("send failed with error: %d\n", WSAGetLastError());
 			closesocket(ClientSocket);
 			WSACleanup();
 			return 1;
 		}
+		printf("------------------------------------\n");
 		printf("Bytes sent: %d\n", iSendResult);
-		//printf("send content: %s", recvbuf);
+		printf("send content: %s", sendPacket.c_str());
 	}
 	else if (iResult == 0)
 		printf("Connection closing...\n");
